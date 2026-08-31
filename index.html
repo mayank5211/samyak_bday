@@ -418,108 +418,105 @@
         </span>
     </button>
 
-    <!-- Audio Player: starts muted+autoplay (allowed everywhere), unmutes on first gesture -->
-    <audio id="bgMusic" loop autoplay muted playsinline preload="auto">
+    <!-- Audio Player -->
+    <audio id="bgMusic" loop playsinline preload="auto">
         <source src="hbday_sonu.m4a" type="audio/mp4">
         <source src="hbday_sonu.m4a" type="audio/x-m4a">
     </audio>
 
     <!-- Scripts -->
     <script>
-        // --- Music Player Toggle & Auto-Play Logic ---
+        // --- Music Player Logic ---
         const musicToggleBtn = document.getElementById('musicToggleBtn');
         const musicIcon = document.getElementById('musicIcon');
         const musicLabel = document.getElementById('musicLabel');
         const musicBars = document.getElementById('musicBars');
         const audio = document.getElementById('bgMusic');
-        let isPlaying = false;
+        let userStopped = false; // set true only when the guest deliberately mutes
 
-        function setMusicPlayingState(playing) {
-            isPlaying = playing;
-            if (playing) {
+        // Single source of truth: ask the element itself, never a stale variable.
+        function isAudible() {
+            return !audio.paused && !audio.muted;
+        }
+
+        function refreshMusicUI() {
+            if (isAudible()) {
                 musicIcon.innerHTML = '<i class="fa-solid fa-volume-high text-blue-600"></i>';
                 musicLabel.textContent = 'Music: ON';
-                musicLabel.className = 'font-extrabold text-blue-900 tracking-tight';
+                musicLabel.className = 'font-extrabold text-blue-900 tracking-tight pointer-events-none';
                 musicBars.classList.remove('hidden');
                 musicToggleBtn.classList.remove('opacity-75', 'border-gray-300', 'animate-pulse');
                 musicToggleBtn.classList.add('border-yellow-400');
             } else {
                 musicIcon.innerHTML = '<i class="fa-solid fa-volume-xmark text-gray-500"></i>';
-                musicLabel.textContent = 'Music: OFF';
-                musicLabel.className = 'font-extrabold text-gray-600 tracking-tight';
+                musicLabel.textContent = 'Tap for Music 🎵';
+                musicLabel.className = 'font-extrabold text-gray-600 tracking-tight pointer-events-none';
                 musicBars.classList.add('hidden');
-                musicToggleBtn.classList.add('opacity-75', 'border-gray-300');
-                musicToggleBtn.classList.remove('border-yellow-400', 'animate-pulse');
+                musicToggleBtn.classList.add('opacity-75', 'border-gray-300', 'animate-pulse');
+                musicToggleBtn.classList.remove('border-yellow-400');
             }
         }
 
-        function playMusic() {
+        // Start audible playback. Never re-mutes on failure (that was silencing it).
+        function startMusic() {
             audio.muted = false;
             audio.volume = 1.0;
+            if (audio.readyState === 0) audio.load();
             const p = audio.play();
             if (p && p.catch) {
-                p.then(() => setMusicPlayingState(true))
-                 .catch(err => {
-                     // Safari refused audible playback — keep it silently looping muted
-                     // so the very next real tap can unmute instantly.
-                     console.log("Audible playback blocked, waiting for gesture:", err);
-                     audio.muted = true;
-                     audio.play().catch(() => {});
-                     setMusicPlayingState(false);
-                 });
+                p.then(refreshMusicUI).catch(err => {
+                    console.log('Playback needs a user gesture:', err);
+                    refreshMusicUI();
+                });
+            } else {
+                refreshMusicUI();
             }
         }
 
-        // Kept as an alias so all call sites behave identically
-        function unmuteAndPlay() {
-            playMusic();
+        function stopMusic() {
+            audio.pause();
+            refreshMusicUI();
         }
 
-        // 1. Try to autoplay with sound on load (works on local file:// and some browsers)
-        window.addEventListener('load', () => {
-            playMusic();
-        });
+        // 1. Optimistic attempt on load (works on file:// and permissive browsers)
+        window.addEventListener('load', startMusic);
 
-        // 2. First-Interaction Fallback — Safari/iOS require a real user gesture.
-        //    Uses bubble phase (NOT capture) so the button's own handler runs first.
-        function startAudioOnFirstInteraction(e) {
+        // 2. Keep retrying on ANY user gesture until the audio is genuinely audible.
+        //    Listeners persist (not once-only) so a blocked first attempt still recovers.
+        const gestureEvents = ['pointerdown', 'touchend', 'mousedown', 'keydown', 'click', 'touchstart'];
+
+        function onUserGesture(e) {
             if (e && e.target && e.target.closest && e.target.closest('#musicToggleBtn')) return;
-            if (!isPlaying) playMusic();
-            removeFirstInteractionListeners();
-        }
-
-        const gestureEvents = ['pointerdown', 'touchend', 'mousedown', 'keydown'];
-
-        function removeFirstInteractionListeners() {
-            gestureEvents.forEach(evt => {
-                document.removeEventListener(evt, startAudioOnFirstInteraction);
-            });
+            if (!isAudible() && !userStopped) startMusic();
         }
 
         gestureEvents.forEach(evt => {
-            document.addEventListener(evt, startAudioOnFirstInteraction);
+            document.addEventListener(evt, onUserGesture);
         });
 
-        // 3. Manual Button Toggle (works on Safari — direct gesture on the button)
-        function toggleMusic(e) {
-            if (e) e.stopPropagation();
-            removeFirstInteractionListeners();
-            if (isPlaying) {
-                audio.pause();
-                setMusicPlayingState(false);
+        // Also retry when the tab becomes visible again (iOS backgrounding pauses audio)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && !isAudible() && !userStopped) startMusic();
+        });
+
+        // 3. Button toggle — reads live element state, so it can never get out of sync.
+        musicToggleBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (isAudible()) {
+                userStopped = true;
+                stopMusic();
             } else {
-                playMusic();
+                userStopped = false;
+                startMusic();
             }
-        }
-
-        musicToggleBtn.addEventListener('click', toggleMusic);
-
-        // Keep the label honest if playback stops or starts for any other reason
-        audio.addEventListener('play', () => { if (!audio.muted) setMusicPlayingState(true); });
-        audio.addEventListener('pause', () => setMusicPlayingState(false));
-        audio.addEventListener('volumechange', () => {
-            if (!audio.paused) setMusicPlayingState(!audio.muted);
         });
+
+        // Keep the label truthful no matter what changes playback
+        ['play', 'pause', 'volumechange', 'ended', 'canplay'].forEach(evt => {
+            audio.addEventListener(evt, refreshMusicUI);
+        });
+
+        refreshMusicUI();
 
         // 4. Side Scroll Cue Visibility on Scroll
         const sideScrollCue = document.getElementById('sideScrollCue');

@@ -483,7 +483,11 @@
 
         // 2. Keep retrying on ANY user gesture until the audio is genuinely audible.
         //    Listeners persist (not once-only) so a blocked first attempt still recovers.
-        const gestureEvents = ['pointerdown', 'touchend', 'mousedown', 'keydown', 'click', 'touchstart'];
+        //    'touchmove' + 'wheel' + 'scroll' make a scroll/swipe alone start the music.
+        const gestureEvents = [
+            'pointerdown', 'touchstart', 'touchmove', 'touchend',
+            'mousedown', 'click', 'keydown', 'wheel', 'scroll'
+        ];
 
         function onUserGesture(e) {
             if (e && e.target && e.target.closest && e.target.closest('#musicToggleBtn')) return;
@@ -491,8 +495,12 @@
         }
 
         gestureEvents.forEach(evt => {
-            document.addEventListener(evt, onUserGesture);
+            // passive:true keeps scrolling smooth; we never call preventDefault here.
+            document.addEventListener(evt, onUserGesture, { passive: true });
         });
+
+        // Scroll can fire on window rather than document in some browsers — cover both.
+        window.addEventListener('scroll', onUserGesture, { passive: true });
 
         // Also retry when the tab becomes visible again (iOS backgrounding pauses audio)
         document.addEventListener('visibilitychange', () => {

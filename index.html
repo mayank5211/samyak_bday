@@ -291,7 +291,7 @@
             </div>
 
             <div class="mt-4">
-                <a href="https://www.evite.com" target="_blank" class="inline-block bg-gradient-to-r from-blue-600 via-yellow-400 to-red-600 text-white text-lg md:text-xl font-bold py-3 px-10 md:px-12 rounded-full shadow-lg hover:scale-105 transition-transform duration-300 border-2 border-white/50">
+                <a href="https://evite.me/TEQYyUyvjC" target="_blank" rel="noopener" class="inline-block bg-gradient-to-r from-blue-600 via-yellow-400 to-red-600 text-white text-lg md:text-xl font-bold py-3 px-10 md:px-12 rounded-full shadow-lg hover:scale-105 transition-transform duration-300 border-2 border-white/50">
                     <i class="fa-solid fa-ticket mr-2 text-yellow-200"></i> Reserve Your Ticket on Evite 🚂
                 </a>
             </div>
@@ -395,7 +395,7 @@
                         We are managing our guest list on Evite.<br>Please click the button below to reserve your ticket!
                     </p>
                     
-                    <a href="https://www.evite.com" target="_blank" class="w-full bg-gradient-to-r from-blue-500 via-yellow-500 to-red-500 hover:from-blue-600 hover:to-red-600 text-white font-bold py-4 rounded-xl shadow-lg transform transition hover:-translate-y-1 hover:shadow-xl inline-block">
+                    <a href="https://evite.me/TEQYyUyvjC" target="_blank" rel="noopener" class="w-full bg-gradient-to-r from-blue-500 via-yellow-500 to-red-500 hover:from-blue-600 hover:to-red-600 text-white font-bold py-4 rounded-xl shadow-lg transform transition hover:-translate-y-1 hover:shadow-xl inline-block">
                         <i class="fa-regular fa-envelope-open mr-2"></i> Respond on Evite
                     </a>
                 </div>
@@ -408,17 +408,17 @@
     </footer>
 
     <!-- Modern Clear Music Player Toggle (Top-Right Floating) -->
-    <button id="musicToggleBtn" class="fixed top-4 right-4 md:top-6 md:right-6 z-50 flex items-center gap-2 bg-white/90 hover:bg-white text-blue-900 border-2 border-yellow-400 backdrop-blur-md px-3.5 py-2 rounded-full shadow-lg font-bold text-xs md:text-sm transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer animate-pulse" aria-label="Toggle Background Music">
-        <span id="musicIcon" class="text-base text-blue-600"><i class="fa-solid fa-volume-high"></i></span>
-        <span id="musicLabel" class="font-extrabold text-blue-900 tracking-tight">Tap for Music 🎵</span>
-        <span id="musicBars" class="flex items-end gap-0.5 h-3.5 hidden">
+    <button id="musicToggleBtn" type="button" class="fixed top-4 right-4 md:top-6 md:right-6 z-[100] flex items-center gap-2 bg-white/90 hover:bg-white text-blue-900 border-2 border-yellow-400 backdrop-blur-md px-3.5 py-2 rounded-full shadow-lg font-bold text-xs md:text-sm transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer animate-pulse" style="pointer-events:auto; -webkit-tap-highlight-color:transparent; touch-action:manipulation;" aria-label="Toggle Background Music">
+        <span id="musicIcon" class="text-base text-blue-600 pointer-events-none"><i class="fa-solid fa-volume-high"></i></span>
+        <span id="musicLabel" class="font-extrabold text-blue-900 tracking-tight pointer-events-none">Tap for Music 🎵</span>
+        <span id="musicBars" class="flex items-end gap-0.5 h-3.5 hidden pointer-events-none">
             <span class="w-1 bg-blue-600 rounded-full animate-pulse h-full"></span>
             <span class="w-1 bg-yellow-500 rounded-full animate-pulse h-2"></span>
             <span class="w-1 bg-red-500 rounded-full animate-pulse h-3"></span>
         </span>
     </button>
 
-    <!-- Audio Player (starts muted so browsers allow instant autoplay, then unmutes on first gesture) -->
+    <!-- Audio Player: starts muted+autoplay (allowed everywhere), unmutes on first gesture -->
     <audio id="bgMusic" loop autoplay muted playsinline preload="auto">
         <source src="hbday_sonu.m4a" type="audio/mp4">
         <source src="hbday_sonu.m4a" type="audio/x-m4a">
@@ -454,52 +454,71 @@
         }
 
         function playMusic() {
-            audio.play().then(() => {
-                // Only report "ON" if it is genuinely audible (not muted)
-                setMusicPlayingState(!audio.muted);
-            }).catch(err => {
-                console.log("Autoplay waiting for first touch/click:", err);
-            });
-        }
-
-        // Unmute (and start if needed) — called on the first real user gesture
-        function unmuteAndPlay() {
             audio.muted = false;
             audio.volume = 1.0;
-            audio.play().then(() => {
-                setMusicPlayingState(true);
-            }).catch(err => {
-                console.log("Playback blocked:", err);
-            });
+            const p = audio.play();
+            if (p && p.catch) {
+                p.then(() => setMusicPlayingState(true))
+                 .catch(err => {
+                     // Safari refused audible playback — keep it silently looping muted
+                     // so the very next real tap can unmute instantly.
+                     console.log("Audible playback blocked, waiting for gesture:", err);
+                     audio.muted = true;
+                     audio.play().catch(() => {});
+                     setMusicPlayingState(false);
+                 });
+            }
         }
 
-        // 1. Muted autoplay begins immediately on load (allowed by every browser)
+        // Kept as an alias so all call sites behave identically
+        function unmuteAndPlay() {
+            playMusic();
+        }
+
+        // 1. Try to autoplay with sound on load (works on local file:// and some browsers)
         window.addEventListener('load', () => {
             playMusic();
         });
 
-        // 2. First-Interaction Fallback — unmutes instantly on the first tap/click/scroll/keypress,
-        //    so the song is already playing and simply becomes audible with no restart delay.
-        const startAudioOnFirstInteraction = () => {
-            unmuteAndPlay();
-            ['click', 'touchstart', 'touchend', 'pointerdown', 'scroll', 'keydown', 'mousemove'].forEach(evt => {
+        // 2. First-Interaction Fallback — Safari/iOS require a real user gesture.
+        //    Uses bubble phase (NOT capture) so the button's own handler runs first.
+        function startAudioOnFirstInteraction(e) {
+            if (e && e.target && e.target.closest && e.target.closest('#musicToggleBtn')) return;
+            if (!isPlaying) playMusic();
+            removeFirstInteractionListeners();
+        }
+
+        const gestureEvents = ['pointerdown', 'touchend', 'mousedown', 'keydown'];
+
+        function removeFirstInteractionListeners() {
+            gestureEvents.forEach(evt => {
                 document.removeEventListener(evt, startAudioOnFirstInteraction);
             });
-        };
+        }
 
-        ['click', 'touchstart', 'touchend', 'pointerdown', 'scroll', 'keydown', 'mousemove'].forEach(evt => {
-            document.addEventListener(evt, startAudioOnFirstInteraction, { once: true, passive: true });
+        gestureEvents.forEach(evt => {
+            document.addEventListener(evt, startAudioOnFirstInteraction);
         });
 
-        // 3. Manual Button Toggle
-        musicToggleBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
+        // 3. Manual Button Toggle (works on Safari — direct gesture on the button)
+        function toggleMusic(e) {
+            if (e) e.stopPropagation();
+            removeFirstInteractionListeners();
             if (isPlaying) {
                 audio.pause();
                 setMusicPlayingState(false);
             } else {
-                unmuteAndPlay();
+                playMusic();
             }
+        }
+
+        musicToggleBtn.addEventListener('click', toggleMusic);
+
+        // Keep the label honest if playback stops or starts for any other reason
+        audio.addEventListener('play', () => { if (!audio.muted) setMusicPlayingState(true); });
+        audio.addEventListener('pause', () => setMusicPlayingState(false));
+        audio.addEventListener('volumechange', () => {
+            if (!audio.paused) setMusicPlayingState(!audio.muted);
         });
 
         // 4. Side Scroll Cue Visibility on Scroll

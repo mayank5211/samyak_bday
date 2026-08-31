@@ -408,20 +408,20 @@
     </footer>
 
     <!-- Modern Clear Music Player Toggle (Top-Right Floating) -->
-    <button id="musicToggleBtn" class="fixed top-4 right-4 md:top-6 md:right-6 z-50 flex items-center gap-2 bg-white/90 hover:bg-white text-blue-900 border-2 border-yellow-400 backdrop-blur-md px-3.5 py-2 rounded-full shadow-lg font-bold text-xs md:text-sm transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer" aria-label="Toggle Background Music">
-        <span id="musicIcon" class="text-base text-blue-600 animate-pulse"><i class="fa-solid fa-volume-high"></i></span>
-        <span id="musicLabel" class="font-extrabold text-blue-900 tracking-tight">Music: ON</span>
-        <span id="musicBars" class="flex items-end gap-0.5 h-3.5">
+    <button id="musicToggleBtn" class="fixed top-4 right-4 md:top-6 md:right-6 z-50 flex items-center gap-2 bg-white/90 hover:bg-white text-blue-900 border-2 border-yellow-400 backdrop-blur-md px-3.5 py-2 rounded-full shadow-lg font-bold text-xs md:text-sm transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer animate-pulse" aria-label="Toggle Background Music">
+        <span id="musicIcon" class="text-base text-blue-600"><i class="fa-solid fa-volume-high"></i></span>
+        <span id="musicLabel" class="font-extrabold text-blue-900 tracking-tight">Tap for Music 🎵</span>
+        <span id="musicBars" class="flex items-end gap-0.5 h-3.5 hidden">
             <span class="w-1 bg-blue-600 rounded-full animate-pulse h-full"></span>
             <span class="w-1 bg-yellow-500 rounded-full animate-pulse h-2"></span>
             <span class="w-1 bg-red-500 rounded-full animate-pulse h-3"></span>
         </span>
     </button>
 
-    <!-- Audio Player -->
-    <audio id="bgMusic" loop>
-        <source src="hppy_day.m4a" type="audio/mp4">
-        <source src="hppy_day.m4a" type="audio/x-m4a">
+    <!-- Audio Player (starts muted so browsers allow instant autoplay, then unmutes on first gesture) -->
+    <audio id="bgMusic" loop autoplay muted playsinline preload="auto">
+        <source src="hbday_sonu.m4a" type="audio/mp4">
+        <source src="hbday_sonu.m4a" type="audio/x-m4a">
     </audio>
 
     <!-- Scripts -->
@@ -438,47 +438,56 @@
             isPlaying = playing;
             if (playing) {
                 musicIcon.innerHTML = '<i class="fa-solid fa-volume-high text-blue-600"></i>';
-                musicIcon.classList.add('animate-pulse');
                 musicLabel.textContent = 'Music: ON';
                 musicLabel.className = 'font-extrabold text-blue-900 tracking-tight';
                 musicBars.classList.remove('hidden');
-                musicToggleBtn.classList.remove('opacity-75', 'border-gray-300');
+                musicToggleBtn.classList.remove('opacity-75', 'border-gray-300', 'animate-pulse');
                 musicToggleBtn.classList.add('border-yellow-400');
             } else {
                 musicIcon.innerHTML = '<i class="fa-solid fa-volume-xmark text-gray-500"></i>';
-                musicIcon.classList.remove('animate-pulse');
                 musicLabel.textContent = 'Music: OFF';
                 musicLabel.className = 'font-extrabold text-gray-600 tracking-tight';
                 musicBars.classList.add('hidden');
                 musicToggleBtn.classList.add('opacity-75', 'border-gray-300');
-                musicToggleBtn.classList.remove('border-yellow-400');
+                musicToggleBtn.classList.remove('border-yellow-400', 'animate-pulse');
             }
         }
 
         function playMusic() {
             audio.play().then(() => {
-                setMusicPlayingState(true);
+                // Only report "ON" if it is genuinely audible (not muted)
+                setMusicPlayingState(!audio.muted);
             }).catch(err => {
                 console.log("Autoplay waiting for first touch/click:", err);
             });
         }
 
-        // 1. Attempt immediate autoplay on page load
+        // Unmute (and start if needed) — called on the first real user gesture
+        function unmuteAndPlay() {
+            audio.muted = false;
+            audio.volume = 1.0;
+            audio.play().then(() => {
+                setMusicPlayingState(true);
+            }).catch(err => {
+                console.log("Playback blocked:", err);
+            });
+        }
+
+        // 1. Muted autoplay begins immediately on load (allowed by every browser)
         window.addEventListener('load', () => {
             playMusic();
         });
 
-        // 2. First-Interaction Fallback (starts music on first tap/touch/scroll without any prompt)
+        // 2. First-Interaction Fallback — unmutes instantly on the first tap/click/scroll/keypress,
+        //    so the song is already playing and simply becomes audible with no restart delay.
         const startAudioOnFirstInteraction = () => {
-            if (!isPlaying) {
-                playMusic();
-            }
-            ['click', 'touchstart', 'scroll', 'keydown'].forEach(evt => {
+            unmuteAndPlay();
+            ['click', 'touchstart', 'touchend', 'pointerdown', 'scroll', 'keydown', 'mousemove'].forEach(evt => {
                 document.removeEventListener(evt, startAudioOnFirstInteraction);
             });
         };
 
-        ['click', 'touchstart', 'scroll', 'keydown'].forEach(evt => {
+        ['click', 'touchstart', 'touchend', 'pointerdown', 'scroll', 'keydown', 'mousemove'].forEach(evt => {
             document.addEventListener(evt, startAudioOnFirstInteraction, { once: true, passive: true });
         });
 
@@ -489,9 +498,7 @@
                 audio.pause();
                 setMusicPlayingState(false);
             } else {
-                audio.play().then(() => {
-                    setMusicPlayingState(true);
-                });
+                unmuteAndPlay();
             }
         });
 
